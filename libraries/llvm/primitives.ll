@@ -1,5 +1,7 @@
 ; forward-declared from primitives.c
 
+declare void @c_println_TODO()
+
 declare %Pos @c_println_Boolean(%Pos)
 declare %Pos @c_println_Int(%Int)
 declare %Pos @c_println_Double(%Double)
@@ -15,3 +17,6 @@ declare %Double @c_sub_Double_Double(%Double, %Double)
 declare %Double @c_mul_Double_Double(%Double, %Double)
 declare %Double @c_div_Double_Double(%Double, %Double)
 declare %Double @c_mod_Double_Double(%Double, %Double)
+
+declare %Pos @c_buffer_heapify(i32, i8*)
+declare void @c_buffer_println(%Pos)
