@@ -69,23 +69,21 @@ object Transformer {
         transform(rest)
       }
       case machine.Construct(v, tag, environment, rest) => {
-        val (_, RegList(outs), restBlock) = transformInline(machine.Clause(List(v), rest))
-        val vd = transformParameter(v);
-        vd.typ match {
+        transform(v.tpe) match {
           case Type.Datatype(adtType) => {
-              emit(Construct(outs(RegisterType.Datatype).head, adtType, tag, transformArguments(environment)))
-              emitInlined(restBlock)
+            val out = bindRegister(RegisterType.Datatype, v, rest)
+              emit(Construct(out, adtType, tag, transformArguments(environment)))
           }
           case Type.Unit() => {
-            val ErasedRegister() = vd.id;
-            emitInlined(restBlock)
+            val ErasedRegister() = transformArgument(v).id;
           }
           case Type.Integer() => {
-            emit(Const(outs(RegisterType.Integer).head, tag))
-            emitInlined(restBlock)
+            val out = bindRegister(RegisterType.Integer, v, rest)
+            emit(Const(out, tag))
           }
           case _ => ???
         }
+        transform(rest)
       }
       case machine.Switch(v @ machine.Variable(name, typ), clauses) => {
         transform(typ) match {
@@ -97,16 +95,15 @@ object Transformer {
           })
         case Type.Integer() => {
           val List(elseClause, thenClause) = clauses;
-          val (_ign1, thenArgs, thenBlock) = transformInline(thenClause);
+          val (thenClosesOver, thenArgs, thenBlock) = transformInline(thenClause);
           val (elseClosesOver, elseArgs, elseBlock) = transformInline(elseClause)
           val elseLabel = emit(elseBlock);
           emit(IfZero(transformArgument(v).id, Clause(elseArgs, elseLabel)));
           emitInlined(thenBlock)
         }
         case Type.Unit() => {
-          val List(clause) = clauses;
-          val (_ign1, args, block) = transformInline(clause);
-          emitInlined(block)
+          val List(machine.Clause(_, rest)) = clauses;
+          transform(rest)
         }
         case Type.Continuation() | Type.Double() | Type.String() |  Type.Codata(_) => {
           sys error "Fatal error: Trying to match on non-datatype"
@@ -117,12 +114,11 @@ object Transformer {
         val transformedClauses = clauses.map({
           case machine.Clause(parameters, body) => transformInline(machine.Clause(machine.Variable("???", machine.Type.Int()) :: parameters, body), false)
         });
-        val (_, RegList(outs), restBlock) = transformInline(machine.Clause(List(name), rest));
-        val out = outs(RegisterType.Codata).head
+        val out = bindRegister(RegisterType.Codata, name, rest)
         val targets = transformedClauses.map({case (_,_,block) => emit(block)})
         val env = transformArguments(BC.environment)
         emit(New(out, targets, env))
-        emitInlined(restBlock)
+        transform(rest)
       }
       case machine.Invoke(value, tag, environment) => {
         Invoke(transformArgument(value).id, tag, transformArguments(environment))
@@ -144,37 +140,34 @@ object Transformer {
         emitInlined(block)
       }
       case machine.LiteralInt(out, n, rest) => {
-        //extendEnvironment(Environment.from(List(transformParameter(out))));
-        val (_, RegList(outs), block) = transformInline(machine.Clause(List(out), rest));
-        emit(Const(outs(RegisterType.Integer).head, n));
-        emitInlined(block)
+        val outTransformed = bindRegister(RegisterType.Integer, out, rest)
+        emit(Const(outTransformed, n));
+        transform(rest)
       }
       case machine.LiteralDouble(out, value, rest) => {
-        val (_, RegList(outs), block) = transformInline(machine.Clause(List(out), rest));
-        emit(ConstDouble(outs(RegisterType.Double).head, value));
-        emitInlined(block)
+        val outTransformed = bindRegister(RegisterType.Double, out, rest)
+        emit(ConstDouble(outTransformed, value));
+        transform(rest)
       }
       case machine.LiteralUTF8String(out, value, rest) => {
-        val (_, RegList(outs), block) = transformInline(machine.Clause(List(out), rest));
-        emit(ConstString(outs(RegisterType.String).head, new String(value, StandardCharsets.UTF_8))); // TODO: Escape or encode somehow
-        emitInlined(block)
+        val outTransformed = bindRegister(RegisterType.String, out, rest)
+        emit(ConstString(outTransformed, new String(value, StandardCharsets.UTF_8))); // TODO: Escape or encode somehow
+        transform(rest)
       }
       case machine.NewStack(name, frame, rest) => {
         val (closesOver, _, target) = transformClosure(frame);
-        val (_, RegList(outs), restBlock) = transformInline(machine.Clause(List(name), rest));
-        val out = outs(RegisterType.Continuation).head
+        val out = bindRegister(RegisterType.Continuation, name, rest)
         emit(NewStack(out, target, closesOver));
-        emitInlined(restBlock)
+        transform(rest)
       }
       case machine.PushStack(value, rest) => {
         emit(PushStack(transformArgument(value).id));
         transform(rest)
       }
       case machine.PopStack(name, rest) => {
-        val (_, RegList(outs), block) = transformInline(machine.Clause(List(name), rest));
-        val out = outs(RegisterType.Continuation).head;
+        val out = bindRegister(RegisterType.Continuation, name, rest)
         emit(Shift(out, 1));
-        emitInlined(block)
+        transform(rest)
       }
   }
 
@@ -188,6 +181,16 @@ object Transformer {
       case machine.Type.Double() => Type.Double()
       case machine.Type.String() => Type.String()
       case machine.Type.Stack() => Type.Continuation()
+  }
+
+  def bindRegister(tpe: RegisterType, name: machine.Variable, rest: machine.Statement)(using BC: BlockContext, PC: ProgramContext): Register = {
+    val freeInRest = transformArguments(analysis.freeVariables(machine.Clause(List(name), rest)).toList)
+    val reusable = transformArguments(BC.environment) -- freeInRest
+    assert(transform(name.tpe).registerType == tpe)
+    val newEnv = BC.environment.extendedReusing(transformParameters(List(name)), reusable)
+    extendFrameDescriptorTo(newEnv)
+    BC.environment = newEnv
+    newEnv.registerIndex(transformParameter(name))
   }
 
   def transformClosure(machineClause: machine.Clause)(using ProgramContext, BlockContext): (RegList, RegList, BlockLabel) = {
