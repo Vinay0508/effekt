@@ -401,7 +401,7 @@ object Transformer {
     }
 
   def transform(tpe: core.ValueType)(using Context): Type = tpe match {
-    case core.ValueType.Var(name) => ???
+    case core.ValueType.Var(name) => Positive(name.name.name) // assume all value parameters are data
     case core.ValueType.Data(symbol, targs) => Positive(symbol.name.name)
     case core.ValueType.Record(symbol, targs) => Positive(symbol.name.name)
     case core.ValueType.Boxed(tpe, capt) => ???
