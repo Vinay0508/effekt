@@ -22,7 +22,8 @@ object PolymorphismBoxing extends Phase[CoreTransformed, CoreTransformed] {
   }
   def box(using PContext): PartialFunction[ValueType, Boxer] = {
     case ValueType.Extern(name, List()) =>
-      Boxer.from(PContext.getDataLikeDeclaration(Context.module.findPrelude.types("Boxed" + name)))
+      Boxer.from(
+        PContext.getDataLikeDeclaration(Context.module.findPrelude.types("Boxed" + name)))
   }
 
   class PContext(val declarations: List[Declaration])(using val context: Context){
@@ -257,7 +258,7 @@ object PolymorphismBoxing extends Phase[CoreTransformed, CoreTransformed] {
 
     override def apply(t: Pure): Pure = {
       val boxer = box(valueType)
-      Pure.PureApp(Block.BlockVar(box(valueType).unbox, boxer.unboxTpe, Set()), List(), List(t))
+      Pure.Select(t, boxer.unbox, to)
     }
   }
 
