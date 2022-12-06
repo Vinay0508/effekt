@@ -157,7 +157,7 @@ object PolymorphismBoxing extends Phase[CoreTransformed, CoreTransformed] {
               val casetpe: BlockType.Function = BlockType.Function(tparams, List(),
                 constructor.fields.map(_.tpe), List(), Type.inferType(clause.body)
               )
-              (id, coercer(clause.tpe, Type.instantiate(casetpe, targs, List()))(transform(clause)))
+              (id, coercer(clause.tpe, Type.instantiate(casetpe, targs map transformArg, List()))(transform(clause)))
           }, default map transform)
         case ValueType.Record(symbol, targs) =>
           val Declaration.Data(tpeId, tparams, constructors) = PContext.getDataLikeDeclaration(symbol)
