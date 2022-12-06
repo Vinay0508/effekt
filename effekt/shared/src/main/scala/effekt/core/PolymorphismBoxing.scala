@@ -159,6 +159,16 @@ object PolymorphismBoxing extends Phase[CoreTransformed, CoreTransformed] {
               )
               (id, coercer(clause.tpe, Type.instantiate(casetpe, targs, List()))(transform(clause)))
           }, default map transform)
+        case ValueType.Record(symbol, targs) =>
+          val Declaration.Data(tpeId, tparams, constructors) = PContext.getDataLikeDeclaration(symbol)
+          Stmt.Match(transform(scrutinee), clauses.map{
+            case (id, clause: Block.BlockLit) =>
+              val constructor = constructors.find(_.id == id).get
+              val casetpe: BlockType.Function = BlockType.Function(tparams, List(),
+                constructor.fields.map(_.tpe), List(), Type.inferType(clause.body)
+              )
+              (id, coercer(clause.tpe, Type.instantiate(casetpe, targs, List()))(transform(clause)))
+          }, default map transform)
         case t => Context.abort(s"Match on value of type ${PrettyPrinter.format(t)}")
       }
     case Stmt.State(id, init, region, body) =>
@@ -263,6 +273,7 @@ object PolymorphismBoxing extends Phase[CoreTransformed, CoreTransformed] {
       //Context.warning(s"Coercing ${PrettyPrinter.format(from)} to ${PrettyPrinter.format(to)}")
       IdentityCoercer(from, to)
   }
+
   def coercer[B >: Block.BlockLit <: Block](fromtpe: BlockType, totpe: BlockType, targs: List[ValueType] = List())(using PContext): Coercer[BlockType, B] = (fromtpe, totpe) match {
     case (f,t) if f == t => IdentityCoercer(fromtpe, totpe)
     case (BlockType.Function(ftparams, fcparams, fvparams, fbparams, fresult),
