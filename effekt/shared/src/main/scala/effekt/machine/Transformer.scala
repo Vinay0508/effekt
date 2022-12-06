@@ -114,7 +114,8 @@ object Transformer {
           Clause(List(transform(lifted.ValueParam(id, tpe))), transform(rest)),
             transform(bind)
         )
-      case lifted.App(lifted.BlockVar(id, tpe), List(), args) =>
+      case lifted.App(lifted.BlockVar(id, tpe), targs, args) =>
+        if(!targs.forall(isSimpleDataType)){ Context.abort(s"Polymorphism is only supported over data types, got ${targs}.") }
         // TODO deal with BlockLit
         id match {
           case symbols.UserFunction(_, _, _, _, _, _, _)  | symbols.TmpBlock() =>
@@ -140,7 +141,8 @@ object Transformer {
             Context.abort(s"Unsupported blocksymbol: $id")
         }
 
-      case lifted.App(lifted.Member(lifted.BlockVar(id, tpe), op), List(), args) =>
+      case lifted.App(lifted.Member(lifted.BlockVar(id, tpe), op), targs, args) =>
+        if(!targs.forall(isSimpleDataType)){ Context.abort(s"Polymorphism is only supported over data types, got ${targs}.") }
         val opTag = {
           tpe match
             case core.BlockType.Interface(symbols.Interface(_, _, ops), _) => ops.indexOf(op)
@@ -289,7 +291,9 @@ object Transformer {
 
     // hardcoded translation for get and put.
     // TODO remove this when interfaces are correctly translated
-    case lifted.PureApp(lifted.Member(lifted.BlockVar(x, core.BlockType.Interface(_, List(stateType))), TState.get), List(), List()) =>
+    case lifted.PureApp(lifted.Member(lifted.BlockVar(x, core.BlockType.Interface(_, List(stateType))), TState.get), targs, List()) =>
+      if(!targs.forall(isSimpleDataType)){ Context.abort(s"Polymorphism is only supported over data types, got ${targs}.") }
+
       val tpe = transform(stateType)
       val variable = Variable(freshName("x"), tpe)
       val stateVariable = Variable(transform(x) + "$State", Type.Reference(tpe))
@@ -297,7 +301,9 @@ object Transformer {
         Load(variable, stateVariable, k(variable))
       }
 
-    case lifted.PureApp(lifted.Member(lifted.BlockVar(x, core.BlockType.Interface(_, List(stateType))), TState.put), List(), List(arg)) =>
+    case lifted.PureApp(lifted.Member(lifted.BlockVar(x, core.BlockType.Interface(_, List(stateType))), TState.put), targs, List(arg)) =>
+      if(!targs.forall(isSimpleDataType)){ Context.abort(s"Polymorphism is only supported over data types, got ${targs}.") }
+
       val tpe = transform(stateType)
       val variable = Variable(freshName("x"), Positive("Unit"));
       val stateVariable = Variable(transform(x) + "$State", Type.Reference(tpe))
@@ -308,7 +314,9 @@ object Transformer {
         }
       }
 
-    case lifted.PureApp(lifted.BlockVar(blockName: symbols.ExternFunction, tpe: core.BlockType.Function), List(), args) =>
+    case lifted.PureApp(lifted.BlockVar(blockName: symbols.ExternFunction, tpe: core.BlockType.Function), targs, args) =>
+      if(!targs.forall(isSimpleDataType)){ Context.abort(s"Polymorphism is only supported over data types, got ${targs}.") }
+
       val variable = Variable(freshName("x"), transform(tpe.result))
       transform(args).flatMap { values =>
         Binding { k =>
@@ -316,7 +324,9 @@ object Transformer {
         }
       }
 
-    case lifted.PureApp(lifted.BlockVar(blockName: symbols.Constructor, tpe: core.BlockType.Function), List(), args) =>
+    case lifted.PureApp(lifted.BlockVar(blockName: symbols.Constructor, tpe: core.BlockType.Function), targs, args) =>
+      if(!targs.forall(isSimpleDataType)){ Context.abort(s"Polymorphism is only supported over data types, got ${targs}.") }
+
       val variable = Variable(freshName("x"), transform(tpe.result));
       val tag = getTagFor(blockName)
 
@@ -350,9 +360,9 @@ object Transformer {
 
   def getTagFor(constructor: symbols.Constructor)(using Context): Int = constructor.tpe match {
     case symbols.DataType(name, Nil, constructors) => constructors.indexOf(constructor)
-    case symbols.DataType(name, tparams, constructors) => Context.abort("Not yet supported: (data) type polymorphism")
+    case symbols.DataType(name, tparams, constructors) => constructors.indexOf(constructor)//Context.abort("Not yet supported: (data) type polymorphism")
     case symbols.Record(name, Nil, constructor) => builtins.SingletonRecord
-    case symbols.Record(name, tparams, constructor) => Context.abort("Not yet supported: (data) type polymorphism")
+    case symbols.Record(name, tparams, constructor) => builtins.SingletonRecord//Context.abort("Not yet supported: (data) type polymorphism")
     case t @ symbols.ExternType(name, tparams) => Context.abort(s"Application to an unknown symbol: $t")
   }
 
@@ -426,7 +436,14 @@ object Transformer {
 
     case symbols.InterfaceType(interface, List()) => Negative(interface.name.name)
 
-    case symbols.ValueTypeApp(typeConstructor, List()) => Positive(typeConstructor.name.name)
+    case symbols.ValueTypeApp(typeConstructor, targs) =>
+      // TODO: Add something like:
+      // if(!targs.forall(isSimpleDataType)) {
+      //   Context.abort(s"Unsupported type ${tpe} polymorphic over non-data type")
+      // }
+      Positive(typeConstructor.name.name)
+
+    case symbols.ValueTypeRef(r) => Positive(r.toString())
 
     case _ =>
       Context.abort(s"unsupported type: $tpe (class = ${tpe.getClass})")
@@ -434,6 +451,18 @@ object Transformer {
 
   def transform(id: Symbol): String =
     s"${id.name}_${id.id}"
+
+  def isSimpleDataType(tpe: core.ValueType): Boolean = {
+    tpe match
+      case core.ValueType.Var(_) => true // assume by induction all type variables must be data
+      case core.ValueType.Data(_, args) => {
+        args.forall(isSimpleDataType)
+      }
+      case core.ValueType.Record(_, args) => {
+        args.forall(isSimpleDataType)
+      }
+      case _ => false
+  }
 
   def freshName(baseName: String): String = baseName + "_" + symbols.Symbol.fresh.next()
 
