@@ -49,13 +49,11 @@ spreadsheet:
 | **2**  | 20 | B1 * 2  |
 
 ```
-def example1(key: Key): Val / { Need, NeedInput, Console } = {
+def example1(key: Key): Val / { Need, NeedInput } = {
     println(key);
-    key match {
-        case "B1" => do Need("A1") + do Need("A2")
-        case "B2" => do Need("B1") * 2
-        case _ => do NeedInput(key)
-    }
+    if (key == "B1") do Need("A1") + do Need("A2")
+    else if (key == "B2") do Need("B1") * 2
+    else do NeedInput(key)
 }
 ```
 
@@ -93,14 +91,14 @@ For this we need a store, which we represent as a list of pairs of keys and valu
 The `memo` handler function tries to look up the needed key in the store. If the key is found it returns the associated value. Otherwise it itself uses `Need`, stores the result, and returns the value.
 
 ```
-def memo[R] { prog: R / { Need } }: R / { Need } = {
+def memo[R] { prog: => R / { Need } }: R / { Need } = {
     var store: Store = Nil();
     try {
         prog()
     } with Need { (key) =>
         try {
             resume(find(store, key))
-        } with KeyNotFound { (k) =>
+        } with KeyNotFound[A] { (k) =>
             val v = do Need(k);
             store = Cons((k, v), store);
             resume(v)
@@ -115,11 +113,9 @@ A second example needs the same key twice.
 // Needing the same key twice
 def example2(key: Key) = {
     println(key);
-    key match {
-        case "B1" => do Need("A1") + do Need("A2")
-        case "B2" => do Need("B1") * do Need("B1")
-        case _ => do NeedInput(key)
-    }
+    if (key == "B1") do Need("A1") + do Need("A2")
+    else if (key == "B2") do Need("B1") * do Need("B1")
+    else do NeedInput(key)
 }
 ```
 
@@ -128,7 +124,7 @@ When we run this example without memoization we will see `"B1"`, `"A1"`, and `"A
 Finally, to supply the inputs, we have a handler for the `NeedInput` effect.
 
 ```
-def supplyInput[R](store: Store) { prog: R / { NeedInput } }: R / { KeyNotFound } = {
+def supplyInput[R](store: Store) { prog: => R / { NeedInput } }: R / { KeyNotFound } = {
     try { prog() } with NeedInput { (key) => resume(find(store, key)) }
 }
 ```
@@ -147,6 +143,6 @@ def main() = {
         println("");
         val result3 = supplyInput(inputs) { build ("B2") { (key) => memo { example2(key) } } };
         println(result3)
-    } with KeyNotFound { (key) => println("Key not found: " ++ key) }
+    } with KeyNotFound[A] { (key) => println("Key not found: " ++ key) }
 }
 ```
