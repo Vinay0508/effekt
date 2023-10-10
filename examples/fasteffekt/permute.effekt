@@ -3,44 +3,6 @@ import mutable/array
 
 def main() = {
     var count = 0;
-    var v = <>;
-    def swap(arr: Array[Int], a: Int, b: Int) = {
-        var swapped = arr.unsafeGet(a);
-        arr.put(a,arr.unsafeGet(b));
-        arr.put(b, swapped);
-    }
-
-    def permute(arr: Array[Int], n: Int): Unit = {
-        println("permute arr")
-        //how to: arr.toString()?
-        if (n != 0) {
-            val n1 = n - 1;
-            permute(arr, n1);
-            var i = n1;
-            while (i >= 0) {
-                arr.swap(n1, i)
-                arr.permute(n1)
-                arr.swap(n1, i)
-                i = i-1;
-            }
-        }
-    }
-
-    def run(): Unit = {
-        val count = 0;
-        val arr = emptyArray[Int](6);
-
-        var i = 0;
-        while (i < arr.size()) {
-            arr.put(i, 1);  
-            i=i+1;      
-        }
-        println("start permute");
-
-        permute(arr, 6);
-
-    }
-
-    run()
+    println("hello")
 }
 
