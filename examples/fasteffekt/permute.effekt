@@ -1,8 +1,8 @@
 import mutable/array
 
 
-def main() = {
-    var count = 0;
+def main() = region helloWorld {
+    var count in helloWorld = 0;    //make count live in scope "helloWorld" => vgl namespace
     println("hello")
 }
 
